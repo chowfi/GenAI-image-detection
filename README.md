@@ -1,5 +1,4 @@
 # AI-generated image detection
-Detect AI-generated images in an online setting
 
 ## Managing Python packages
 
