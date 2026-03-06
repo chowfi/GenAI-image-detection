@@ -11,6 +11,8 @@ from data_split import *
 import logging
 import argparse
 import os
+import time
+import subprocess
 
 logging.basicConfig(filename='training.log',filemode='w',level=logging.INFO, force=True)
 
@@ -22,6 +24,40 @@ class ImageClassifier(pl.LightningModule):
         self.recall = Recall(task='binary', threshold=0.5)  
         self.validation_outputs = []
         self.lmd = lmd
+        self.last_batch_end_time = None
+    
+    def on_train_batch_start(self, batch, batch_idx, dataloader_idx=0):
+        now = time.perf_counter()
+        if self.last_batch_end_time is not None:
+            data_time = now - self.last_batch_end_time
+            logging.info(f"Data time before batch {batch_idx}: {data_time:.3f}s")
+        self.step_start_time = now
+    
+    def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
+        now = time.perf_counter()
+        step_time = now - self.step_start_time
+        self.last_batch_end_time = now
+
+        gpu_util, mem_util = "NA", "NA"
+        try:
+            result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu, utilization.memory",
+                    "--format=csv,noheader,nounits,"
+                ]
+            capture_output = True,
+            text = True,
+            check = True
+            )
+            gpu_util, mem_util = result.stdout.srip().split(", ")
+        except Exception as e:
+            logging.warning(f"Failed to query nvidia-smi: {e}")
+
+        logging.info(
+            f"Compute time for batch {batch_idx} took {step_time:.3f}s,"
+            f"GPU util {gpu_util}% mem util {mem_util}%"
+        )
 
     def forward(self, x):
         return self.model(x)
